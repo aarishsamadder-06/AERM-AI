@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { background: #f8f5ec; color: #18352a; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: #f8f5ec; }
+button, input, select { font: inherit; }
+a, button, input, select { -webkit-tap-highlight-color: transparent; }
+.site-stage { position: relative; min-height: calc(100vh - 73px); isolation: isolate; overflow: hidden; }
+.site-stage > main, .site-stage > section { position: relative; z-index: 1; }
+.grain { background-image: radial-gradient(rgba(24,53,42,.07) .7px, transparent .7px); background-size: 13px 13px; }
+.focus-ring:focus-visible { outline: 3px solid #c9a96a; outline-offset: 3px; }
+.glass-panel { border: 1px solid rgba(255,255,255,.62); background: rgba(255,255,255,.48); box-shadow: 0 24px 70px rgba(24,53,42,.1), inset 0 1px rgba(255,255,255,.7); backdrop-filter: blur(18px); }
+.depth-card { transition: transform .5s cubic-bezier(.2,.8,.2,1), box-shadow .5s ease, border-color .5s ease; }
+.depth-card:hover { transform: translateY(-7px) rotateX(1deg); border-color: rgba(30,90,69,.24); box-shadow: 0 26px 65px rgba(24,53,42,.14); }
+.atmosphere { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; opacity: .9; }
+.atmosphere-paused * { animation-play-state: paused !important; }
+.atmosphere-glow { position: absolute; border-radius: 999px; filter: blur(1px); mix-blend-mode: multiply; }
+.atmosphere-glow-one { width: 52vw; height: 52vw; left: -18vw; top: -18vw; background: radial-gradient(circle, rgba(184,207,181,.52), transparent 68%); animation: drift 18s ease-in-out infinite alternate; }
+.atmosphere-glow-two { width: 42vw; height: 42vw; right: -14vw; top: 20%; background: radial-gradient(circle, rgba(210,186,139,.28), transparent 68%); animation: drift-reverse 22s ease-in-out infinite alternate; }
+.atmosphere-orbit { position: absolute; border: 1px solid rgba(30,90,69,.13); border-radius: 48% 52% 42% 58%; transform: rotate(-24deg); }
+.atmosphere-orbit-one { width: 55vw; height: 22vw; left: 17%; top: 12%; animation: orbit 24s ease-in-out infinite alternate; }
+.atmosphere-orbit-two { width: 44vw; height: 17vw; right: -3%; bottom: 12%; border-color: rgba(201,169,106,.2); transform: rotate(22deg); animation: orbit-reverse 28s ease-in-out infinite alternate; }
+.atmosphere-sphere { position: absolute; border-radius: 50%; border: 1px solid rgba(255,255,255,.8); background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.85), rgba(188,214,192,.18) 30%, rgba(30,90,69,.08) 72%, transparent 74%); box-shadow: inset -14px -18px 26px rgba(30,90,69,.08), 0 18px 45px rgba(30,90,69,.08); }
+.atmosphere-sphere-one { width: 100px; height: 100px; right: 12%; top: 12%; animation: float-one 12s ease-in-out infinite; }
+.atmosphere-sphere-two { width: 54px; height: 54px; left: 8%; top: 48%; animation: float-two 15s ease-in-out infinite; }
+.atmosphere-sphere-three { width: 72px; height: 72px; right: 22%; bottom: 8%; background: radial-gradient(circle at 35% 20%, rgba(255,255,255,.85), rgba(214,190,144,.2) 32%, rgba(201,169,106,.08) 70%, transparent 74%); animation: float-three 17s ease-in-out infinite; }
+.atmosphere-particles { position: absolute; inset: 0; opacity: .38; background-image: radial-gradient(circle at 14% 30%, rgba(201,169,106,.8) 0 1px, transparent 2px), radial-gradient(circle at 78% 24%, rgba(30,90,69,.7) 0 1px, transparent 2px), radial-gradient(circle at 63% 70%, rgba(201,169,106,.65) 0 1px, transparent 2px), radial-gradient(circle at 35% 82%, rgba(30,90,69,.55) 0 1px, transparent 2px); background-size: 160px 180px, 220px 240px, 190px 230px, 260px 260px; animation: particles 26s linear infinite; }
+.atmosphere-hero .atmosphere-sphere-one { width: 150px; height: 150px; right: 7%; top: 7%; }
+.atmosphere-hero .atmosphere-orbit-one { top: 18%; left: 28%; width: 62vw; }
+.atmosphere-quiet { opacity: .65; }
+.analysis-orb { animation: orb-spin 18s linear infinite; background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.25), transparent 42%); box-shadow: inset -18px -18px 30px rgba(0,0,0,.1), 0 0 55px rgba(201,169,106,.12); }
+.analysis-orb-delay { animation-duration: 14s; animation-direction: reverse; }
+.scan-line { position: absolute; inset: 0 auto 0 -30%; width: 30%; background: linear-gradient(90deg, transparent, rgba(214,187,124,.8), transparent); animation: scan 1.4s ease-in-out infinite; }
+.result-sheen { position: absolute; inset: -50% auto auto -20%; width: 55%; height: 220%; transform: rotate(22deg); background: linear-gradient(90deg, transparent, rgba(255,255,255,.09), transparent); animation: sheen 7s ease-in-out infinite; }
+.progress-fill { transition: width .6s cubic-bezier(.2,.8,.2,1); }
+@keyframes drift { to { transform: translate(5vw, 4vh) scale(1.05); } }
+@keyframes drift-reverse { to { transform: translate(-4vw, -3vh) scale(1.08); } }
+@keyframes orbit { to { transform: rotate(-14deg) translate(2vw, 2vh); } }
+@keyframes orbit-reverse { to { transform: rotate(31deg) translate(-2vw, -1vh); } }
+@keyframes float-one { 0%,100% { transform: translate3d(0,0,0) rotate(0); } 50% { transform: translate3d(-18px,22px,0) rotate(8deg); } }
+@keyframes float-two { 0%,100% { transform: translate3d(0,0,0); } 50% { transform: translate3d(20px,-18px,0); } }
+@keyframes float-three { 0%,100% { transform: translate3d(0,0,0) rotate(0); } 50% { transform: translate3d(14px,12px,0) rotate(-8deg); } }
+@keyframes particles { to { background-position: 35px -45px, -38px 28px, 22px 40px, -28px -36px; } }
+@keyframes orb-spin { 0%,100% { transform: translate3d(0,0,0) rotate(0deg); } 50% { transform: translate3d(-12px,14px,0) rotate(180deg); } }
+@keyframes scan { to { transform: translateX(430%); } }
+@keyframes sheen { 0%,55%,100% { transform: translateX(-20%) rotate(22deg); opacity: 0; } 20%,38% { transform: translateX(180%) rotate(22deg); opacity: 1; } }
+@media (max-width: 640px) { .atmosphere-sphere-one { width: 72px; height: 72px; } .atmosphere-sphere-two { width: 36px; height: 36px; } .atmosphere-orbit-one { width: 110vw; left: -15%; } .atmosphere-orbit-two { width: 90vw; right: -20%; } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } }
