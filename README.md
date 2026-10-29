@@ -57,6 +57,19 @@ The catalogue uses established brands only for high-confidence, broadly publishe
 
 Authentication, profile/history persistence, and account recovery are unavailable until an auth provider, server-side session handling, and a database are configured. Routine state is local to the current browser. Product matching and skin analysis remain deterministic simulation.
 
+## Phase 2 Day 1 ML audit
+
+The repository does not contain a dataset, training module, model weights, or trained
+inference path. The current predictor remains a deterministic simulation. A verified
+SCIN dataset audit is documented in [`docs/DATASET_AUDIT.md`](docs/DATASET_AUDIT.md);
+SCIN is a medical dermatology-condition dataset and is not being used as a cosmetic
+selfie label source. No dataset was downloaded or added to Git.
+
+Real training is blocked until a consented, license-compatible dataset provides
+explicit non-medical cosmetic labels and subject identifiers for leakage-safe splits.
+The planned baseline is a small single-image transfer-learning classifier, selected
+only after dataset and hardware validation.
+
 ## Phase 1 boundary
 
 This is educational software, not a medical diagnostic tool. Phase 2 is intentionally not implemented: no trained inference, authentication, accounts, database/history, payments, clinical claims, or deployment infrastructure.
