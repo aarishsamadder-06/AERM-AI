@@ -86,8 +86,56 @@ Prefer the smallest model that provides a reproducible, auditable baseline. Do n
 select weights solely because a model is popular, and do not treat raw softmax scores
 as calibrated probabilities.
 
+## Phase 2 Day 4 acquisition status
+
+The official public transfer route was used after reviewing the SCIN Data Use License.
+No private credentials or access-control bypass was used. The full SCIN image payload
+is approximately 11.7 GiB; network throttling prevented completion in this work
+session, so training is intentionally deferred.
+
+The external data directory
+`C:\Users\Aarish\AppData\Local\AERM-AI-data\scin-1.0.0` contains the official CSV
+manifests and license plus 352 verified PNG files from 340 cases. All decoded
+successfully, matched manifest paths, and had no duplicate SHA-256 groups in the
+acquired subset. A deterministic case-aware 80/10/10 split was created outside Git
+with seed `20261030`: 272 train cases, 34 validation cases, and 34 test cases.
+
+The binary label policy is explicit: group both quality-sufficient values as the
+positive class, map insufficient quality to the negative class, and exclude
+disagreement/ties or unknown labels from the primary split. This subset validation
+does not establish full-release image statistics or model readiness.
+
 ## Explicitly not implemented
 
 No real model, training run, model weights, diagnosis, treatment prescription, or
 production predictor replacement is part of this repository yet. Only temporary
-metadata copies were used for this audit and were removed after inspection.
+metadata copies used during the earlier audit were removed; the Day 4 external
+dataset directory is intentionally retained outside the repository for the next
+authorized continuation.
+
+## Phase 2 Day 5 baseline
+
+The official transfer completed 10,373 of 10,379 listed image objects. Six
+downloads failed due to network timeouts/connection closure, and one additional
+manifest reference is absent from the official object listing. The complete
+local validation found 10,373 readable PNG files, zero corrupt files, zero
+unmatched local paths, and zero duplicate SHA-256 groups. Data remains outside
+Git at `C:\Users\Aarish\AppData\Local\AERM-AI-data\scin-1.0.0`.
+
+After excluding 351 locally represented disagreement cases, 4,661 cases and
+9,392 image rows were split by `case_id` with seed `20261030`: 3,728 train
+cases/7,497 rows, 466 validation cases/955 rows, and 467 test cases/940 rows.
+The split is recorded externally as `metadata\day5_case_split.csv`.
+
+A non-neural baseline using 21 deterministic image features, standardization,
+and class-weighted logistic regression was trained and evaluated. Validation
+accuracy/macro-F1 were 0.554/0.540; test accuracy/macro-F1 were 0.601/0.588.
+The majority baseline was stronger on accuracy (0.610 validation and 0.628 test)
+but weaker on macro-F1 (0.379 validation and 0.386 test). The checkpoint is
+external at `metadata\day5-baseline-full\quality_baseline.pkl`.
+
+This result is sufficient to prove the offline pipeline is reproducible, not to
+justify deployment. PyTorch/torchvision were unavailable, so no ResNet-18
+comparison was run. The baseline is not integrated into FastAPI or the frontend;
+the deterministic cosmetic simulator remains unchanged. Raw scores are not
+calibrated confidence values.

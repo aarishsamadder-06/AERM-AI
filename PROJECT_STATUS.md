@@ -99,3 +99,68 @@ context. It is **NO-GO for AERM API integration** because it is medical-conditio
 imagery, not controlled facial cosmetic data, and the proposed task is only an
 image-quality gate. The existing predictor, API contract, frontend, and
 recommendation flow remain unchanged.
+
+## Phase 2 Day 4 — dataset acquisition and validation
+
+- [x] Re-read the SCIN license and used the documented public storage download route.
+- [x] Confirmed that no manual login or private credential was required for the
+  public transfer path used here.
+- [x] Acquired the official CSV manifests and license outside Git.
+- [x] Acquired and inspected 352 PNG image files across 340 cases outside Git.
+- [x] Confirmed zero Pillow decode failures, zero unmatched local image paths, and
+  zero duplicate SHA-256 groups in the acquired subset.
+- [x] Applied the explicit binary label policy and created a deterministic,
+  case-aware split outside Git with seed `20261030`.
+- [ ] Complete the full approximately 11.7 GiB image transfer; network throttling
+  stopped the current partial acquisition.
+- [ ] Validate full-release dimensions, formats, file sizes, missing files, and
+  duplicate content after acquisition completes.
+- [ ] Decide whether the completed data supports a baseline after checking sampling
+  and class balance.
+- [ ] Train or evaluate a real model.
+- [ ] Replace the production simulator with real inference.
+
+### Day 4 decision and Day 5 plan
+
+Day 4 is **GO for bounded acquisition/validation** and **NO-GO for training or
+production integration**. The validated data is a partial SCIN subset, not the full
+release, and SCIN remains an offline medical-image gradability experiment unrelated
+to AERM's cosmetic predictor. The external data directory is
+`C:\Users\Aarish\AppData\Local\AERM-AI-data\scin-1.0.0`.
+
+Day 5 should resume the authorized transfer from that directory, remove any
+incomplete files, repeat the full manifest/image validation, and only then decide
+whether a non-neural image-quality baseline is justified. No model weights,
+training metrics, API changes, or frontend changes exist.
+
+## Phase 2 Day 5 — complete ML baseline
+
+- [x] Resumed the official transfer without bypassing access controls; 10,373 of
+  10,379 listed image objects completed.
+- [x] Recorded six network failures and the one additional missing manifest path.
+- [x] Validated 10,373 image bytes: all decoded as PNG, with zero corrupt files,
+  zero unmatched local paths, and zero duplicate SHA-256 groups.
+- [x] Applied the disagreement policy: 351 locally represented cases with mixed
+  gradability labels were excluded from the primary binary dataset.
+- [x] Created the deterministic case-aware split outside Git with seed `20261030`:
+  3,728 train cases/7,497 rows, 466 validation cases/955 rows, and 467 test
+  cases/940 rows.
+- [x] Trained and evaluated a reproducible 21-feature class-weighted logistic
+  regression baseline outside Git.
+- [x] Compared the baseline with a majority-class baseline using accuracy,
+  precision, recall, macro F1, confusion matrices, and per-class metrics.
+- [x] Added repository-side ML module and tests without changing the production
+  predictor, API, frontend, or recommendation flow.
+
+### Day 5 results and boundary
+
+Validation accuracy/macro-F1 were `0.554/0.540`; test accuracy/macro-F1 were
+`0.601/0.588`. Majority accuracy was `0.610` validation and `0.628` test, with
+macro F1 `0.379` and `0.386`. The baseline improves macro F1 but not accuracy,
+and is not reliable enough for deployment or integration. The external
+checkpoint is
+`C:\Users\Aarish\AppData\Local\AERM-AI-data\scin-1.0.0\metadata\day5-baseline-full\quality_baseline.pkl`.
+PyTorch/torchvision were unavailable, so a ResNet-18 comparison was not run.
+SCIN remains an offline image-gradability experiment, not a cosmetic or medical
+predictor. Day 6 is needed for either the six-file retrieval retry and/or a
+transfer-learning comparison; production integration remains out of scope.

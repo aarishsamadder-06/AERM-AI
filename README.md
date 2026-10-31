@@ -70,6 +70,11 @@ explicit non-medical cosmetic labels and subject identifiers for leakage-safe sp
 The planned baseline is a small single-image transfer-learning classifier, selected
 only after dataset and hardware validation.
 
+An offline SCIN image-gradability baseline now exists under `backend/ml/`. It uses
+external data only and does not replace the production simulator. Run the backend
+tests with `cd backend; pytest -q`; run the experiment with the command in
+[`backend/ml/README.md`](backend/ml/README.md) after acquiring SCIN outside Git.
+
 ## Phase 1 boundary
 
 This is educational software, not a medical diagnostic tool. Phase 2 is intentionally not implemented: no trained inference, authentication, accounts, database/history, payments, clinical claims, or deployment infrastructure.
