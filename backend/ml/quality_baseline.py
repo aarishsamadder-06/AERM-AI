@@ -12,6 +12,7 @@ import json
 import pickle
 import random
 from collections import Counter
+from io import BytesIO
 from pathlib import Path
 from typing import Iterable
 
@@ -34,6 +35,10 @@ QUALITY_LABELS = {
 FEATURE_DESCRIPTION = (
     "RGB means/stds, grayscale mean/std and percentiles, saturation statistics, "
     "and finite-difference edge energy after RGB resize to 128x128"
+)
+QUALITY_FEATURE_DESCRIPTION = (
+    "Base features plus aspect ratio, normalized dimensions, contrast, "
+    "under/overexposure proportions, and Laplacian sharpness"
 )
 
 
@@ -64,9 +69,13 @@ def _image_path(root: Path, manifest_path: str) -> Path:
 
 
 def extract_features(path: Path) -> np.ndarray:
-    with Image.open(path) as image:
+    return extract_features_from_bytes(path.read_bytes())
+
+
+def extract_features_from_bytes(content: bytes) -> np.ndarray:
+    with Image.open(BytesIO(content)) as image:
         image.verify()
-    with Image.open(path) as image:
+    with Image.open(BytesIO(content)) as image:
         rgb = np.asarray(image.convert("RGB").resize((128, 128)), dtype=np.float32) / 255.0
     gray = rgb.mean(axis=2)
     horizontal = np.diff(gray, axis=1)
@@ -88,6 +97,35 @@ def extract_features(path: Path) -> np.ndarray:
         ],
         dtype=np.float32,
     )
+
+
+def extract_quality_features(path: Path) -> np.ndarray:
+    with Image.open(path) as image:
+        width, height = image.size
+    with Image.open(path) as image:
+        rgb = np.asarray(image.convert("RGB").resize((128, 128)), dtype=np.float32) / 255.0
+    gray = rgb.mean(axis=2)
+    laplacian = (
+        gray[:-2, 1:-1]
+        + gray[2:, 1:-1]
+        + gray[1:-1, :-2]
+        + gray[1:-1, 2:]
+        - 4 * gray[1:-1, 1:-1]
+    )
+    base = extract_features(path)
+    extra = np.asarray(
+        [
+            float(width / max(height, 1)),
+            float(width / 1080),
+            float(height / 1080),
+            float(gray.std()),
+            float((gray < 0.03).mean()),
+            float((gray > 0.97).mean()),
+            float(laplacian.var()),
+        ],
+        dtype=np.float32,
+    )
+    return np.concatenate([base, extra])
 
 
 def _metric_report(y_true: np.ndarray, predictions: np.ndarray) -> dict:
@@ -157,7 +195,7 @@ def train_and_evaluate(
 ) -> dict:
     random.seed(seed)
     np.random.seed(seed)
-    rows = load_split_rows(split_path or root / "metadata" / "day4_case_split.csv")
+    rows = load_split_rows(split_path or root / "metadata" / "day5_case_split.csv")
     features, labels, splits = build_arrays(root, rows)
     model = Pipeline(
         [
@@ -210,9 +248,19 @@ def train_and_evaluate(
 def predict_image(model_path: Path, image_path: Path) -> dict[str, str | float]:
     with model_path.open("rb") as handle:
         model = pickle.load(handle)
-    probability = float(model.predict_proba(extract_features(image_path)[None, :])[0, 1])
-    label = "quality_sufficient" if probability >= 0.5 else "insufficient"
-    return {"label": label, "score": probability}
+    values = extract_features(image_path)[None, :]
+    label_value = int(model.predict(values)[0])
+    if hasattr(model, "predict_proba"):
+        score = float(model.predict_proba(values)[0, 1])
+        score_kind = "uncalibrated_probability"
+    else:
+        score = float(model.decision_function(values)[0])
+        score_kind = "decision_score"
+    return {
+        "label": "quality_sufficient" if label_value else "insufficient",
+        "score": score,
+        "score_kind": score_kind,
+    }
 
 
 def main() -> None:
@@ -222,7 +270,7 @@ def main() -> None:
     parser.add_argument(
         "--split-file",
         type=Path,
-        help="Case-aware split CSV; defaults to metadata/day4_case_split.csv",
+        help="Case-aware split CSV; defaults to metadata/day5_case_split.csv",
     )
     args = parser.parse_args()
     print(

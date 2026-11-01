@@ -311,3 +311,33 @@ The test confusion matrix, with labels `[insufficient, quality_sufficient]`, is
 `[[199, 151], [224, 366]]`. The model improves macro F1 over the majority
 baseline but not accuracy. This is an offline research result, not a calibrated
 probability, production quality gate, cosmetic predictor, or medical model.
+
+## Day 6 model comparison and finalization
+
+The Day 5 baseline was independently reproduced from the external
+`metadata\day5_case_split.csv` split. The same 3,728 train cases, 466 validation
+cases, and 467 test cases were used for every candidate. The test set was not
+used for model selection.
+
+| Candidate | Validation accuracy | Validation macro F1 | Test evaluation |
+|---|---:|---:|---|
+| Logistic Regression, 21 features | 0.554 | 0.540 | Not selected |
+| Random Forest, 21 features | 0.614 | 0.484 | Not selected |
+| RBF SVM, 21 features | 0.591 | 0.562 | Selected |
+| Logistic Regression, 28 quality features | 0.561 | 0.545 | Not selected |
+
+The seven added quality features were aspect ratio, normalized dimensions,
+grayscale contrast, under/overexposure proportions, and Laplacian sharpness.
+They are image-derived and do not use labels, case identity, or split membership.
+The RBF SVM was selected by validation macro F1, then evaluated once on the
+untouched test set: accuracy 0.605, macro precision 0.572, macro recall 0.569,
+and macro F1 0.570. Its confusion matrix was
+`[[149, 201], [170, 420]]` for labels
+`[insufficient, quality_sufficient]`. The majority baseline remained higher on
+test accuracy at 0.628 but had macro F1 0.386.
+
+The selected checkpoint and complete comparison report are outside Git at
+`metadata\day6-model-comparison\selected_quality_model.pkl` and
+`metadata\day6-model-comparison\model_comparison_metrics.json`. Independent
+inference was verified using the checkpoint. Its SVM decision score is not a
+calibrated probability. No SCIN result was integrated into AERM production.

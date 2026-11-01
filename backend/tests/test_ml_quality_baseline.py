@@ -3,7 +3,12 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from ml.quality_baseline import _label_from_gradability, extract_features
+from ml.quality_baseline import (
+    _label_from_gradability,
+    extract_features,
+    extract_quality_features,
+)
+from ml.model_comparison import _majority_report
 
 
 def test_gradability_policy_maps_quality_variants_and_rejects_ties():
@@ -33,3 +38,12 @@ def test_extract_features_is_finite_and_fixed_length(tmp_path: Path):
     values = extract_features(image_path)
     assert values.shape == (21,)
     assert np.isfinite(values).all()
+    quality_values = extract_quality_features(image_path)
+    assert quality_values.shape == (28,)
+    assert np.isfinite(quality_values).all()
+
+
+def test_majority_report_uses_both_classes():
+    report = _majority_report(np.array([0, 0, 1]))
+    assert report["majority_class"] == "insufficient"
+    assert report["f1_macro"] < 0.5

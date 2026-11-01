@@ -1,10 +1,30 @@
+import os
+import secrets
+import sqlite3
 from io import BytesIO
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Cookie, File, Form, Header, HTTPException, Query, Response, UploadFile
 from PIL import Image, UnidentifiedImageError
 
-from ..schemas import AnalysisResponse, RecommendationRequest, RecommendationResponse
+from ..schemas import (
+    AnalysisResponse,
+    ImageQualityAssessment,
+    RecommendationRequest,
+    RecommendationResponse,
+)
+from ..auth_schemas import LoginRequest, RegisterRequest, UserResponse
+from ..services.auth import (
+    SESSION_COOKIE,
+    authenticate_user,
+    create_session,
+    create_user,
+    get_user_for_session,
+    normalize_email,
+    revoke_session,
+)
+from ..services.quality_gate import assess_images
 from ..services.predictor import PRODUCTS, filter_catalogue, match_products, simulate_analysis
+from ..config import cookie_samesite, cookie_secure
 
 router = APIRouter(prefix="/api")
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -17,9 +37,113 @@ MAGIC = {
 }
 
 
+def _set_session_cookie(response: Response, token: str, expires_at) -> None:
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        httponly=True,
+        secure=cookie_secure(),
+        samesite=cookie_samesite(),
+        expires=expires_at,
+        max_age=14 * 24 * 60 * 60,
+    )
+
+
+def _set_csrf_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        "aerm_csrf",
+        token,
+        httponly=False,
+        secure=cookie_secure(),
+        samesite=cookie_samesite(),
+        max_age=14 * 24 * 60 * 60,
+    )
+
+
+def _require_csrf(
+    csrf_cookie: str | None,
+    csrf_header: str | None,
+) -> None:
+    if not csrf_cookie or not csrf_header or not secrets.compare_digest(csrf_cookie, csrf_header):
+        raise HTTPException(status_code=403, detail="CSRF validation failed.")
+
+
+@router.get("/auth/csrf")
+def csrf(response: Response) -> dict[str, str]:
+    token = secrets.token_urlsafe(32)
+    _set_csrf_cookie(response, token)
+    return {"csrf_token": token}
+
+
+@router.post("/auth/register", response_model=UserResponse, status_code=201)
+def register(
+    request: RegisterRequest,
+    response: Response,
+    aerm_csrf: str | None = Cookie(default=None),
+    x_csrf_token: str | None = Header(default=None),
+) -> UserResponse:
+    _require_csrf(aerm_csrf, x_csrf_token)
+    try:
+        user = create_user(request.name, normalize_email(str(request.email)), request.password)
+    except sqlite3.IntegrityError as exc:
+        if "UNIQUE constraint failed" in str(exc):
+            raise HTTPException(status_code=409, detail="An account with that email already exists.") from exc
+        raise
+    token, expires_at = create_session(user["id"])
+    _set_session_cookie(response, token, expires_at)
+    _set_csrf_cookie(response, secrets.token_urlsafe(32))
+    return UserResponse(**user)
+
+
+@router.post("/auth/login", response_model=UserResponse)
+def login(
+    request: LoginRequest,
+    response: Response,
+    aerm_csrf: str | None = Cookie(default=None),
+    x_csrf_token: str | None = Header(default=None),
+) -> UserResponse:
+    _require_csrf(aerm_csrf, x_csrf_token)
+    user = authenticate_user(str(request.email), request.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Email or password is incorrect.")
+    token, expires_at = create_session(user["id"])
+    _set_session_cookie(response, token, expires_at)
+    _set_csrf_cookie(response, secrets.token_urlsafe(32))
+    return UserResponse(**user)
+
+
+@router.post("/auth/logout", status_code=204)
+def logout(
+    response: Response,
+    aerm_session: str | None = Cookie(default=None),
+    aerm_csrf: str | None = Cookie(default=None),
+    x_csrf_token: str | None = Header(default=None),
+) -> Response:
+    _require_csrf(aerm_csrf, x_csrf_token)
+    revoke_session(aerm_session)
+    response.delete_cookie(SESSION_COOKIE)
+    response.delete_cookie("aerm_csrf")
+    response.status_code = 204
+    return response
+
+
+@router.get("/auth/me", response_model=UserResponse)
+def current_user(aerm_session: str | None = Cookie(default=None)) -> UserResponse:
+    user = get_user_for_session(aerm_session)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    return UserResponse(**user)
+
+
 @router.get("/health")
 def health() -> dict[str, str | bool]:
-    return {"status": "ok", "service": "aerm-ai-api", "demo_mode": True, "model": "phase1-deterministic-skin-simulator"}
+    return {
+        "status": "ok",
+        "service": "aerm-ai-api",
+        "demo_mode": True,
+        "model": "phase1-deterministic-skin-simulator",
+        "image_quality_gate_configured": bool(os.getenv("AERM_QUALITY_MODEL_PATH")),
+    }
 
 
 async def read_image(image: UploadFile, slot: str) -> tuple[str, bytes]:
@@ -53,7 +177,17 @@ async def analyze(
     fragrance_free: bool = Form(default=False),
 ) -> AnalysisResponse:
     images = [await read_image(front, "Front image"), await read_image(left, "Left image"), await read_image(right, "Right image")]
-    return simulate_analysis(images, budget_inr=budget_inr, fragrance_free=fragrance_free)
+    response = simulate_analysis(images, budget_inr=budget_inr, fragrance_free=fragrance_free)
+    try:
+        quality = assess_images(
+            [(slot, content) for slot, (_name, content) in zip(("front", "left", "right"), images)]
+        )
+        response.image_quality = (
+            ImageQualityAssessment.model_validate(quality) if quality else None
+        )
+    except (FileNotFoundError, ValueError, OSError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return response
 
 
 @router.get("/products")

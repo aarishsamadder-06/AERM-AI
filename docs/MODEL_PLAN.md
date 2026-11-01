@@ -139,3 +139,98 @@ justify deployment. PyTorch/torchvision were unavailable, so no ResNet-18
 comparison was run. The baseline is not integrated into FastAPI or the frontend;
 the deterministic cosmetic simulator remains unchanged. Raw scores are not
 calibrated confidence values.
+
+## Phase 2 Day 6 model comparison
+
+The saved Day 5 result was reproduced from the external
+`metadata\day5_case_split.csv` manifest. The split contains 3,728 train cases,
+466 validation cases, and 467 test cases after excluding 351 locally represented
+gradability-disagreement cases. All images from each case remain in one split.
+
+Three models were compared on the same 21-feature matrix:
+
+| Candidate | Validation accuracy | Validation macro F1 | Fit time |
+|---|---:|---:|---:|
+| Logistic Regression, class-weighted | 0.554 | 0.540 | 0.06 s |
+| Random Forest, class-weighted | 0.614 | 0.484 | 1.55 s |
+| RBF SVM, class-weighted | 0.591 | 0.562 | 3.10 s |
+
+Seven additional capture-quality features were also evaluated with logistic
+regression: aspect ratio, normalized dimensions, grayscale contrast,
+under/overexposure proportions, and Laplacian sharpness. This 28-feature variant
+reached validation accuracy 0.561 and macro F1 0.545, so it was not selected.
+These features are derived only from image pixels and dimensions; they do not
+encode labels, case IDs, or split membership.
+
+The RBF SVM was selected by validation macro F1. It was then evaluated once on
+the untouched test set: accuracy 0.605, macro precision 0.572, macro recall
+0.569, and macro F1 0.570. The confusion matrix
+`[[149, 201], [170, 420]]` uses labels
+`[insufficient, quality_sufficient]`. The majority baseline reached test accuracy
+0.628 and macro F1 0.386. The selected model therefore improves balanced
+performance but not raw accuracy.
+
+The external selected checkpoint is
+`C:\Users\Aarish\AppData\Local\AERM-AI-data\scin-1.0.0\metadata\day6-model-comparison\selected_quality_model.pkl`,
+with metrics in the adjacent `model_comparison_metrics.json`. Independent
+inference returns a class label and SVM decision score; it is not a calibrated
+probability. The checkpoint is not connected to FastAPI or the frontend.
+
+This comparison does not make SCIN a cosmetic dataset and does not justify
+predicting skin type, acne severity, hydration, sebum, allergies, barrier health,
+or medical diagnosis. The existing deterministic AERM predictor remains the
+production path.
+
+## Day 1 pretrained-model audit
+
+The verified local runtime is Python with Pillow, NumPy, and
+`scikit-learn==1.8.0`. The external SCIN RBF SVM checkpoint loads successfully
+under that version and produces a raw image-gradability decision score. It remains
+the only model verified end to end in the current environment.
+
+| Candidate | Verified artifacts and task | License/access | Day 1 decision |
+|---|---|---|---|
+| `LaurianeMD/vit-skin-disease` | Public `model.safetensors` (343,285,496 bytes), ViT-Base/16, 224x224, 22 dermatological condition classes; Transformers loading path documented | Model card license is marked “More Information Needed”; underlying dataset is linked to a Kaggle skin-disease dataset | Do not select until licensing and label provenance are resolved; not a cosmetic predictor |
+| `redlessone/DermFM-Zero` | Public Hugging Face model; PanDerm-L/16 plus PubMedBERT, prompt-based zero-shot dermatology classification, native-resolution support | CC BY-NC-ND 4.0, non-commercial academic research; access terms/login required; heavyweight PyTorch/open-clip stack | Not practical for this deadline or commercial/hosted integration |
+| `google/derm-foundation` | Public Hugging Face TensorFlow/Keras model; 448x448 PNG input and 6,144-dimensional embedding output | Health AI Developer Foundations Terms of Use; distribution/hosted-service restrictions apply | Not a direct predictor; would require a separately trained downstream classifier |
+| `imfarzanansari/skintelligent-acne` | Public `model.safetensors` (343,233,204 bytes), Transformers image classifier with levels -1 through 4 | MIT checkpoint license; model card provides the severity labels | Technically plausible after installing PyTorch/Transformers, but only acne severity and not validated for this app or current labels |
+
+The model-card metrics and claims above were not treated as AERM results. No
+pretrained candidate was downloaded or integrated on Day 1. The repository has no
+PyTorch, torchvision, Transformers, or TensorFlow dependency, and adding a
+~343 MB checkpoint plus a deep-learning runtime without a validated task would
+not produce a defensible cosmetic analysis.
+
+### Practical integration design
+
+1. Keep the existing `POST /api/analyze` contract and in-memory upload validation.
+2. Run the SCIN SVM as an optional, separate image-quality gate before any future
+   skin-analysis model; never map its label to skin type, acne, hydration,
+   sebum, allergy, barrier health, or diagnosis.
+3. Add a future model adapter under `backend/app/services/` only after a model
+   has verified weights, explicit labels matching the supported output, tested
+   preprocessing, and representative validation data.
+4. Convert the adapter output into the existing structured response only through
+   explicitly supported cosmetic labels; keep recommendation matching rule-based
+   until those labels are genuinely validated.
+5. Add model loading/inference tests and startup health metadata before changing
+   frontend behavior.
+
+Day 2 should either validate a legally usable, technically compatible acne or
+cosmetic model on representative images, or stop and preserve the simulator.
+No genuine cosmetic predictor is selected by this audit.
+
+## Day 2 verified integration boundary
+
+Because no pretrained cosmetic model with verified labels and licensing was
+available, the only genuine ML capability integrated is the SCIN image-gradability
+gate. It is implemented in `backend/app/services/quality_gate.py` and is enabled
+only when `AERM_QUALITY_MODEL_PATH` points to the external Day 6 RBF SVM checkpoint.
+The gate evaluates front, left, and right uploads independently and adds an
+optional `image_quality` object to `AnalysisResponse`.
+
+The existing simulated `finding`, concern literals, recommendations, routine, and
+product matching are unchanged. The SCIN labels are never converted into acne,
+skin type, hydration, sebum, allergy, pigmentation, barrier, or diagnosis
+outputs. Without the environment variable, the field is `null`; with an invalid
+configured path, the API returns HTTP 503 explicitly.

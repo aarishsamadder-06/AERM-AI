@@ -164,3 +164,188 @@ PyTorch/torchvision were unavailable, so a ResNet-18 comparison was not run.
 SCIN remains an offline image-gradability experiment, not a cosmetic or medical
 predictor. Day 6 is needed for either the six-file retrieval retry and/or a
 transfer-learning comparison; production integration remains out of scope.
+
+## Phase 2 Day 6 — model improvement and finalization
+
+- [x] Re-verified the saved Day 5 metrics and reproduced the 21-feature baseline
+  from the external case-aware split.
+- [x] Compared Logistic Regression, Random Forest, and RBF SVM on identical
+  training/validation rows with class weighting where supported.
+- [x] Added and evaluated seven non-leaky capture-quality features: aspect ratio,
+  normalized dimensions, contrast, under/overexposure proportions, and Laplacian
+  sharpness.
+- [x] Selected the model using validation macro F1 only, with validation accuracy
+  and fit time as tie-breakers; the test set was evaluated once afterward.
+- [x] Saved the selected checkpoint and complete comparison metrics outside Git.
+- [x] Verified independent checkpoint inference and retained the production
+  predictor, FastAPI contract, frontend, and recommendation engine unchanged.
+
+### Day 6 comparison
+
+| Candidate | Validation accuracy | Validation macro F1 | Fit time |
+|---|---:|---:|---:|
+| Logistic Regression, 21 features | 0.554 | 0.540 | 0.06 s |
+| Random Forest, 21 features | 0.614 | 0.484 | 1.55 s |
+| RBF SVM, 21 features | 0.591 | 0.562 | 3.10 s |
+| Logistic Regression, 28 quality features | 0.561 | 0.545 | 0.05 s |
+
+The RBF SVM was selected by validation macro F1. On the untouched test set it
+achieved accuracy `0.605`, macro F1 `0.570`, macro precision `0.572`, and macro
+recall `0.569`. Its confusion matrix, with labels
+`[insufficient, quality_sufficient]`, was `[[149, 201], [170, 420]]`.
+The majority baseline achieved test accuracy `0.628` and macro F1 `0.386`.
+Therefore the selected model improves macro F1 but not accuracy and is not
+validated for deployment.
+
+The external checkpoint is
+`C:\Users\Aarish\AppData\Local\AERM-AI-data\scin-1.0.0\metadata\day6-model-comparison\selected_quality_model.pkl`;
+metrics are in the adjacent `model_comparison_metrics.json`. The score is a
+decision score, not calibrated confidence. No inference integration was performed.
+
+### Day 6 completion decision
+
+Day 6 is complete for the planned offline comparison and finalization. The project
+is ready for a Phase 1/early-Phase-2 demonstration of the existing application,
+with the SCIN experiment shown only as a separate research artifact. It is not
+ready to demonstrate ML-powered cosmetic skin analysis. Remaining work includes
+retrying six unavailable SCIN files if needed, broader external validation,
+calibration, subgroup/error analysis, and a genuinely suitable cosmetic dataset.
+
+## Phase 2 Day 1 — pretrained model selection and inference audit
+
+- [x] Audited Git state, API contracts, upload workflow, predictor, dependencies,
+  SCIN tooling, and external checkpoint location.
+- [x] Verified the SCIN RBF SVM with `scikit-learn==1.8.0` and ran sample inference.
+- [x] Verified public weight availability and documented preprocessing, labels,
+  licenses, and limitations for LaurianeMD ViT Skin Disease, DermFM-Zero,
+  Google Derm Foundation, and the MIT acne-severity checkpoint.
+- [x] Kept the SCIN image-gradability model separate from cosmetic skin analysis.
+- [x] Documented an integration design without changing `/api/analyze`, the
+  production predictor, frontend behavior, or recommendation engine.
+- [ ] Select and integrate a genuine cosmetic predictor; no Day 1 candidate has
+  verified labels and validation suitable for that purpose.
+
+### Day 1 decision
+
+The practical verified model remains the external SCIN RBF SVM for an offline
+image-gradability signal only. No pretrained skin-condition model is selected for
+production integration: LaurianeMD has incomplete license metadata, DermFM-Zero
+is non-commercial and heavyweight, Google Derm Foundation is an embedding model
+under HAI-DEF terms, and the acne model has a narrower unsupported output scope.
+The existing deterministic predictor remains the application path.
+
+## Phase 2 Day 2 — verified image-quality integration
+
+- [x] Added an isolated SCIN RBF SVM adapter at
+  `backend/app/services/quality_gate.py`.
+- [x] Reused the exact 21-feature extraction path from `backend/ml/quality_baseline.py`
+  for in-memory FastAPI uploads.
+- [x] Added optional per-view `image_quality` output to `AnalysisResponse` without
+  removing or changing existing fields.
+- [x] Added explicit `AERM_QUALITY_MODEL_PATH` configuration; unset means `null`,
+  while an invalid configured checkpoint returns HTTP 503.
+- [x] Preserved the SCIN model as image-gradability only and left cosmetic
+  findings/recommendations simulated and rule-based.
+- [x] Added adapter/API tests and verified the real external checkpoint through
+  the analysis route.
+
+### Day 2 boundary
+
+No acne, skin-type, hydration, allergy, pigmentation, sebum, barrier-health, or
+diagnostic inference was added. Frontend behavior was not changed; existing
+clients remain compatible because `image_quality` is optional. Day 3 may add an
+explicit frontend display for the separate quality signal, but must not present it
+as cosmetic analysis or medical confidence.
+
+## Phase 2 Day 3 — frontend and end-to-end integration
+
+- [x] Added optional `image_quality` TypeScript types matching the FastAPI
+  response schema.
+- [x] Added separate front, left, and right image-quality status cards to the
+  results page.
+- [x] Added explicit retry guidance for `quality_insufficient` views and kept
+  raw SVM decision scores labelled as non-probability scores.
+- [x] Preserved the legacy `image_quality: null` response path and all existing
+  upload, navigation, catalogue, routine, and simulated-result behavior.
+- [x] Verified the real external checkpoint through FastAPI and confirmed the
+  frontend-compatible per-view payload.
+
+### Day 3 boundary
+
+The frontend displays image gradability separately from the simulated cosmetic
+finding. No acne, pigmentation, hydration, sebum, allergy, skin-type, barrier,
+or diagnostic prediction is presented. The SCIN score is never rendered as
+confidence or probability.
+
+## Phase 4 — final QA and project completion
+
+- [x] Audited the frontend pages, upload workflow, results display, catalogue,
+  routine, authentication placeholders, backend routes, schemas, predictor,
+  quality gate, and environment configuration.
+- [x] Completed backend, frontend, production-build, Python compilation,
+  whitespace, and configured-checkpoint integration validation.
+- [x] Added the practical local demonstration sequence and corrected stale
+  documentation that described the integrated quality gate as offline-only.
+- [x] Verified edge-case handling for missing uploads, unsupported/corrupt/tiny
+  images, invalid checkpoints, unconfigured quality gate behavior, and backend
+  errors.
+
+### Final project boundary
+
+The demonstrable application combines a genuine SCIN image-gradability gate
+with explicitly simulated cosmetic findings and rule-based recommendations.
+The SCIN model is not validated for cosmetic skin analysis or medical diagnosis.
+External dataset files and the checkpoint remain outside Git. Authentication,
+persistence, accounts, clinical workflows, payments, production deployment, and
+cosmetic trained inference remain future work.
+
+## Authentication implementation
+
+- [x] Added local SQLite user and session persistence outside Git.
+- [x] Added PBKDF2 password hashing with per-user random salts.
+- [x] Added register, login, current-user, and logout endpoints.
+- [x] Added HTTP-only, SameSite-configured session cookies and session revocation.
+- [x] Connected Sign Up, Sign In, Profile, and navigation to the backend session.
+- [x] Added backend registration/login/logout/session regression coverage.
+- [ ] Add email verification, password reset delivery, rate limiting, migrations,
+  account deletion, and production database operations.
+
+## Final model benchmark decision
+
+- [x] Rechecked the external Day 6 metrics and selected RBF SVM checkpoint.
+- [x] Confirmed the existing four-candidate traditional comparison remains
+  reproducible with the case-aware train/validation/test split.
+- [x] Confirmed the current environment lacks PyTorch, torchvision, and
+  Transformers, so the requested deep-learning candidates were not benchmarked.
+- [x] Retained the RBF SVM and preserved the existing FastAPI response contract,
+  per-view quality labels, error handling, and frontend integration.
+- [x] Kept model artifacts outside Git.
+
+The RBF SVM remains the best verified candidate in this environment by
+validation macro F1 (`0.562`) and insufficient-class recall (`0.430` on
+validation). Its untouched test results are accuracy `0.605`, macro F1 `0.570`,
+and insufficient-class recall `0.426`. These are SCIN image-gradability results,
+not cosmetic or clinical performance. Because the deep-learning candidates
+could not be executed or verified locally, no claim of comprehensive
+architecture superiority is made and no replacement was integrated.
+
+## Security and deployment hardening
+
+- [x] Removed the predictable production session-secret fallback. Local
+  development uses a random per-process secret when no secret is supplied;
+  production requires `AERM_SESSION_SECRET` with at least 32 characters.
+- [x] Required `AERM_COOKIE_SECURE=true` in production and validated
+  `AERM_COOKIE_SAMESITE`; `SameSite=None` requires Secure cookies.
+- [x] Made credentialed CORS origins configurable with
+  `AERM_ALLOWED_ORIGINS`; wildcard origins are rejected.
+- [x] Added a CSRF double-submit token for cookie-authenticated logout and wired
+  the frontend to send the token.
+- [x] Added production checkpoint SHA-256 verification through
+  `AERM_QUALITY_MODEL_SHA256` and documented pickle trust requirements.
+- [x] Expanded `.gitignore` and verified local auth databases and model artifacts
+  are not tracked.
+
+Production prerequisites are HTTPS, a secret-managed session secret, explicit
+frontend origins, a writable protected database location, and a trusted
+read-only external SCIN checkpoint with a configured SHA-256 digest. The SCIN
+model remains image-gradability-only; cosmetic findings remain simulated.
