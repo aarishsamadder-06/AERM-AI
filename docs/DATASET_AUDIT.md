@@ -199,3 +199,145 @@ compare a small ResNet-18 or EfficientNet-B0 transfer-learning classifier agains
 dataset size and available hardware. Prefer the smallest model that provides a
 reproducible, auditable baseline. Do not select weights solely because a model is
 popular, and do not treat raw softmax scores as calibrated probabilities.
+
+## Day 4 acquisition and validation
+
+The official SCIN bucket and license were rechecked before acquisition. The bucket
+was readable through its documented public Google Cloud Storage download route, so no
+manual Google login or private credential was required for this transfer. The full
+image payload is approximately 11.7 GiB; the transfer was stopped after network
+throttling rather than claiming a complete download.
+
+Downloaded data is stored outside the repository at:
+
+`C:\Users\Aarish\AppData\Local\AERM-AI-data\scin-1.0.0`
+
+The local acquisition currently contains the two CSV manifests, the SCIN license,
+and a bounded partial image set. Incomplete `.part` files were removed after the
+validation pass. No dataset file, archive, credential, or derived manifest was
+placed in Git.
+
+### Actual local validation
+
+The validation inspected **352 image files across 340 cases**. All 352 files:
+
+- decoded successfully with Pillow;
+- were PNG files;
+- matched an official `dataset/images/` manifest path;
+- had no corrupt-file errors; and
+- had no duplicate SHA-256 content groups within the acquired subset.
+
+The 352 local references correspond to 352 official manifest references. The full
+manifest still reports 10,407 references and one missing object; those full-corpus
+facts were not reinterpreted as locally acquired files.
+
+### Label policy and local split
+
+The primary binary policy maps both quality-sufficient values to
+`quality_sufficient`, maps `NO_IMAGE_QUALITY_INSUFFICIENT` to `insufficient`, and
+excludes majority ties or grader disagreement from the primary binary split. Missing
+or unknown labels remain outside the split.
+
+For the 340 locally represented cases, no case was excluded by this policy. A
+deterministic split using seed `20261030` was written outside Git to
+`metadata\day4_case_split.csv`:
+
+| Split | Cases | Quality sufficient | Insufficient | Image rows |
+|---|---:|---:|---:|---:|
+| Train | 272 | 170 | 114 | 284 |
+| Validation | 34 | 19 | 15 | 34 |
+| Test | 34 | 22 | 12 | 34 |
+
+The split is case-aware: every image from a case remains in one split. The test
+split has more image rows than cases because some cases contain multiple acquired
+images. The external report is at `metadata\day4_validation_report.json`.
+
+### Day 4 decision
+
+This is **GO for acquisition/validation of the bounded subset** and **NO-GO for
+training or production integration today**. The subset is too incomplete to
+represent the full SCIN release, and SCIN remains a medical-condition image source
+for an offline image-quality experiment rather than AERM cosmetic analysis.
+
+Day 5 should either resume and complete the authorized transfer, or explicitly
+freeze this subset as a pilot and document why its sampling is adequate before
+training. No real model, accuracy, or API integration claim is made.
+
+## Day 5 acquisition, validation, and baseline
+
+The authorized resume completed 10,373 of the 10,379 listed image objects. Six
+objects could not be retrieved because of timeout or remote-connection failures:
+`-3726235413659361442.png`, `-4411279915061191754.png`,
+`-4883252151958637737.png`, `-617765021333018481.png`,
+`-6828666395047918317.png`, and `-844617859903194673.png`. Together with the one
+manifest reference that is absent from the official object listing, seven
+referenced paths are unavailable locally. No incomplete `.part` file is treated
+as a validated image.
+
+The completed local validation inspected 10,373 image bytes. All decoded with
+Pillow and were PNG files; there were no corrupt files, unmatched local paths,
+or duplicate SHA-256 content groups. The files covered 5,012 cases. The primary
+label policy excluded 351 locally represented cases with any mixed gradability
+labels; no locally represented case had all gradability labels missing. The
+remaining 4,661 cases produced 9,392 image rows.
+
+Using seed `20261030`, a deterministic case-aware split was written outside Git
+to `metadata\day5_case_split.csv`:
+
+| Split | Cases | Image rows | Quality sufficient | Insufficient |
+|---|---:|---:|---:|---:|
+| Train | 3,728 | 7,497 | 4,555 | 2,942 |
+| Validation | 466 | 955 | 583 | 372 |
+| Test | 467 | 940 | 590 | 350 |
+
+No case or image hash appears in more than one split. The external validation
+report is `metadata\day5_validation_report.json`.
+
+### Offline baseline result
+
+A genuine but intentionally lightweight baseline was trained offline using
+21 handcrafted RGB, brightness, saturation, and finite-difference edge features,
+`StandardScaler`, and class-weighted logistic regression. The checkpoint and
+metrics are outside Git at
+`metadata\day5-baseline-full\quality_baseline.pkl` and
+`metadata\day5-baseline-full\quality_baseline_metrics.json`.
+
+| Evaluation | Accuracy | Macro F1 | Majority accuracy | Majority macro F1 |
+|---|---:|---:|---:|---:|
+| Validation | 0.554 | 0.540 | 0.610 | 0.379 |
+| Test | 0.601 | 0.588 | 0.628 | 0.386 |
+
+The test confusion matrix, with labels `[insufficient, quality_sufficient]`, is
+`[[199, 151], [224, 366]]`. The model improves macro F1 over the majority
+baseline but not accuracy. This is an offline research result, not a calibrated
+probability, production quality gate, cosmetic predictor, or medical model.
+
+## Day 6 model comparison and finalization
+
+The Day 5 baseline was independently reproduced from the external
+`metadata\day5_case_split.csv` split. The same 3,728 train cases, 466 validation
+cases, and 467 test cases were used for every candidate. The test set was not
+used for model selection.
+
+| Candidate | Validation accuracy | Validation macro F1 | Test evaluation |
+|---|---:|---:|---|
+| Logistic Regression, 21 features | 0.554 | 0.540 | Not selected |
+| Random Forest, 21 features | 0.614 | 0.484 | Not selected |
+| RBF SVM, 21 features | 0.591 | 0.562 | Selected |
+| Logistic Regression, 28 quality features | 0.561 | 0.545 | Not selected |
+
+The seven added quality features were aspect ratio, normalized dimensions,
+grayscale contrast, under/overexposure proportions, and Laplacian sharpness.
+They are image-derived and do not use labels, case identity, or split membership.
+The RBF SVM was selected by validation macro F1, then evaluated once on the
+untouched test set: accuracy 0.605, macro precision 0.572, macro recall 0.569,
+and macro F1 0.570. Its confusion matrix was
+`[[149, 201], [170, 420]]` for labels
+`[insufficient, quality_sufficient]`. The majority baseline remained higher on
+test accuracy at 0.628 but had macro F1 0.386.
+
+The selected checkpoint and complete comparison report are outside Git at
+`metadata\day6-model-comparison\selected_quality_model.pkl` and
+`metadata\day6-model-comparison\model_comparison_metrics.json`. Independent
+inference was verified using the checkpoint. Its SVM decision score is not a
+calibrated probability. No SCIN result was integrated into AERM production.

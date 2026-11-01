@@ -1,17 +1,60 @@
 export type Concern = "acne" | "dryness" | "redness" | "texture" | "dark_spots" | "sensitivity";
 export type Product = { id: string; name: string; category: "cleanser" | "moisturizer" | "sunscreen" | "serum"; brand: string; price_inr: number; ingredients: string[]; concerns: Concern[]; why: string; match_explanation: string; usage: string; sample_data: boolean; source: string; image_url?: string | null; image_placeholder: string; fragrance_free: boolean; availability: "in_stock" | "limited" | "unavailable" };
 export type RoutineStep = { time: "morning" | "evening" | "weekly"; step: string; action: string; rationale: string };
-export type Analysis = { finding: { label: string; confidence: number; severity: "low" | "medium" | "high"; summary: string }; views: string[]; detected_concerns: Concern[]; matched_ingredients: string[]; rationale: string[]; routine: RoutineStep[]; observations: string[]; recommendations: string[]; products: Product[]; simulation_notice: string };
+export type ImageQualityView = {
+ view: "front" | "left" | "right";
+ label: "quality_sufficient" | "insufficient";
+ decision_score: number;
+ score_kind: "decision_score";
+};
+export type ImageQualityAssessment = {
+ available: boolean;
+ model: string;
+ views: ImageQualityView[];
+ notice: string;
+};
+export type Analysis = { finding: { label: string; confidence: number; severity: "low" | "medium" | "high"; summary: string }; views: string[]; detected_concerns: Concern[]; matched_ingredients: string[]; rationale: string[]; routine: RoutineStep[]; observations: string[]; recommendations: string[]; products: Product[]; simulation_notice: string; image_quality?: ImageQualityAssessment | null };
 const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+let csrfToken: string | null = null;
+
+async function getCsrfToken(forceRefresh = false): Promise<string> {
+  if (csrfToken && !forceRefresh) return csrfToken;
+  const response = await fetch(`${baseUrl}/api/auth/csrf`, { credentials: "include" });
+  if (!response.ok) throw new Error("CSRF protection could not be initialized.");
+  const body = await response.json();
+  if (typeof body.csrf_token !== "string" || !body.csrf_token) {
+    throw new Error("CSRF protection returned an invalid token.");
+  }
+  csrfToken = body.csrf_token;
+  return body.csrf_token;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, init);
+  const method = (init?.method || "GET").toUpperCase();
+  const headers = new Headers(init?.headers);
+  const rotatesCsrf = path === "/api/auth/register" || path === "/api/auth/login";
+  const needsCsrf = path === "/api/auth/register" || path === "/api/auth/login" || path === "/api/auth/logout";
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && needsCsrf) {
+    headers.set("X-CSRF-Token", await getCsrfToken());
+  }
+  const response = await fetch(`${baseUrl}${path}`, { credentials: "include", ...init, headers });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new Error(body?.detail || "The request could not be completed.");
   }
-  return response.json();
+  const body = response.status === 204 ? undefined : await response.json();
+  if (rotatesCsrf) await getCsrfToken(true);
+  if (path === "/api/auth/logout") csrfToken = null;
+  return body;
 }
+
+export type User = { id: number; name: string; email: string };
+export const register = (payload: { name: string; email: string; password: string }) =>
+  request<User>("/api/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+export const login = (payload: { email: string; password: string }) =>
+  request<User>("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+export const logout = () => request<void>("/api/auth/logout", { method: "POST" });
+export const getCurrentUser = () => request<User>("/api/auth/me");
 
 export function analyze(images: { front: File; left: File; right: File }, preferences: { budget_inr?: number; fragrance_free?: boolean } = {}): Promise<Analysis> {
   const data = new FormData();

@@ -39,6 +39,20 @@ class RoutineStep(BaseModel):
     rationale: str
 
 
+class ImageQualityView(BaseModel):
+    view: Literal["front", "left", "right"]
+    label: Literal["quality_sufficient", "insufficient"]
+    decision_score: float
+    score_kind: Literal["decision_score"]
+
+
+class ImageQualityAssessment(BaseModel):
+    available: bool
+    model: str
+    views: list[ImageQualityView]
+    notice: str
+
+
 class AnalysisResponse(BaseModel):
     finding: SkinFinding
     views: list[str]
@@ -50,6 +64,7 @@ class AnalysisResponse(BaseModel):
     recommendations: list[str]
     products: list[Product]
     simulation_notice: str
+    image_quality: ImageQualityAssessment | None = None
 
 
 class RecommendationRequest(BaseModel):
