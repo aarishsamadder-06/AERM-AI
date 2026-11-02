@@ -14,7 +14,7 @@ export type ImageQualityAssessment = {
  notice: string;
 };
 export type Analysis = { finding: { label: string; confidence: number; severity: "low" | "medium" | "high"; summary: string }; views: string[]; detected_concerns: Concern[]; matched_ingredients: string[]; rationale: string[]; routine: RoutineStep[]; observations: string[]; recommendations: string[]; products: Product[]; simulation_notice: string; image_quality?: ImageQualityAssessment | null };
-const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const baseUrl = "";
 let csrfToken: string | null = null;
 
 async function getCsrfToken(forceRefresh = false): Promise<string> {

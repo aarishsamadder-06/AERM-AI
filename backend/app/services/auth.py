@@ -7,9 +7,28 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from ..config import session_secret
 
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:  # pragma: no cover - exercised when local SQLite is used
+    psycopg = None
+    dict_row = None
+
+PG_UNIQUE_VIOLATION = psycopg.errors.UniqueViolation if psycopg else type(
+    "PGUniqueViolation", (Exception,), {}
+)
+
 SESSION_COOKIE = "aerm_session"
 SESSION_DAYS = 14
 PBKDF2_ITERATIONS = 310_000
+
+
+class UserAlreadyExistsError(Exception):
+    """Raised when a normalized email is already registered."""
+
+
+def database_backend() -> str:
+    return "postgresql" if os.getenv("DATABASE_URL") else "sqlite"
 
 
 def _database_path() -> Path:
@@ -19,7 +38,12 @@ def _database_path() -> Path:
     return Path(__file__).resolve().parents[2] / ".aerm-data" / "auth.sqlite3"
 
 
-def _connect() -> sqlite3.Connection:
+def _connect():
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        if psycopg is None:
+            raise RuntimeError("psycopg is required when DATABASE_URL is configured.")
+        return psycopg.connect(database_url, row_factory=dict_row)
     path = _database_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
@@ -28,6 +52,37 @@ def _connect() -> sqlite3.Connection:
 
 
 def initialize_database() -> None:
+    if database_backend() == "postgresql":
+        with _connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id BIGSERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    revoked_at TEXT
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)"
+            )
+        return
     with _connect() as connection:
         connection.executescript(
             """
@@ -87,21 +142,41 @@ def _token_hash(token: str) -> str:
 def create_user(name: str, email: str, password: str) -> dict:
     initialize_database()
     now = _now().isoformat()
-    with _connect() as connection:
-        cursor = connection.execute(
-            "INSERT INTO users (name, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-            (name.strip(), normalize_email(email), _encode_password(password), now, now),
-        )
-        return {"id": cursor.lastrowid, "name": name.strip(), "email": normalize_email(email)}
+    values = (name.strip(), normalize_email(email), _encode_password(password), now, now)
+    try:
+        with _connect() as connection:
+            if database_backend() == "postgresql":
+                row = connection.execute(
+                    "INSERT INTO users (name, email, password_hash, created_at, updated_at) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                    values,
+                ).fetchone()
+                user_id = row["id"]
+            else:
+                cursor = connection.execute(
+                    "INSERT INTO users (name, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    values,
+                )
+                user_id = cursor.lastrowid
+    except sqlite3.IntegrityError as exc:
+        raise UserAlreadyExistsError from exc
+    except PG_UNIQUE_VIOLATION as exc:
+        raise UserAlreadyExistsError from exc
+    return {"id": user_id, "name": name.strip(), "email": normalize_email(email)}
 
 
 def authenticate_user(email: str, password: str) -> dict | None:
     initialize_database()
     with _connect() as connection:
-        row = connection.execute(
-            "SELECT id, name, email, password_hash, is_active FROM users WHERE email = ?",
-            (normalize_email(email),),
-        ).fetchone()
+        if database_backend() == "postgresql":
+            row = connection.execute(
+                "SELECT id, name, email, password_hash, is_active FROM users WHERE email = %s",
+                (normalize_email(email),),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                "SELECT id, name, email, password_hash, is_active FROM users WHERE email = ?",
+                (normalize_email(email),),
+            ).fetchone()
     if not row or not row["is_active"] or not _verify_password(password, row["password_hash"]):
         return None
     return {"id": row["id"], "name": row["name"], "email": row["email"]}
@@ -113,10 +188,16 @@ def create_session(user_id: int) -> tuple[str, datetime]:
     now = _now()
     expires = now + timedelta(days=SESSION_DAYS)
     with _connect() as connection:
-        connection.execute(
-            "INSERT INTO sessions (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
-            (user_id, _token_hash(token), expires.isoformat(), now.isoformat()),
-        )
+        if database_backend() == "postgresql":
+            connection.execute(
+                "INSERT INTO sessions (user_id, token_hash, expires_at, created_at) VALUES (%s, %s, %s, %s)",
+                (user_id, _token_hash(token), expires.isoformat(), now.isoformat()),
+            )
+        else:
+            connection.execute(
+                "INSERT INTO sessions (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
+                (user_id, _token_hash(token), expires.isoformat(), now.isoformat()),
+            )
     return token, expires
 
 
@@ -125,11 +206,15 @@ def get_user_for_session(token: str | None) -> dict | None:
         return None
     initialize_database()
     with _connect() as connection:
+        placeholder = "%s" if database_backend() == "postgresql" else "?"
+        active = "TRUE" if database_backend() == "postgresql" else "1"
         row = connection.execute(
-            """
+            f"""
             SELECT users.id, users.name, users.email, sessions.expires_at
             FROM sessions JOIN users ON users.id = sessions.user_id
-            WHERE sessions.token_hash = ? AND sessions.revoked_at IS NULL AND users.is_active = 1
+            WHERE sessions.token_hash = {placeholder}
+              AND sessions.revoked_at IS NULL
+              AND users.is_active = {active}
             """,
             (_token_hash(token),),
         ).fetchone()
@@ -148,7 +233,8 @@ def revoke_session(token: str | None) -> None:
         return
     initialize_database()
     with _connect() as connection:
+        placeholder = "%s" if database_backend() == "postgresql" else "?"
         connection.execute(
-            "UPDATE sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL",
+            f"UPDATE sessions SET revoked_at = {placeholder} WHERE token_hash = {placeholder} AND revoked_at IS NULL",
             (_now().isoformat(), _token_hash(token)),
         )

@@ -349,3 +349,17 @@ Production prerequisites are HTTPS, a secret-managed session secret, explicit
 frontend origins, a writable protected database location, and a trusted
 read-only external SCIN checkpoint with a configured SHA-256 digest. The SCIN
 model remains image-gradability-only; cosmetic findings remain simulated.
+
+## Free deployment preparation
+
+- [x] Added psycopg v3 PostgreSQL support selected by `DATABASE_URL`.
+- [x] Preserved SQLite as the local fallback when `DATABASE_URL` is unset.
+- [x] Added PostgreSQL-safe `users` and `sessions` initialization while
+  preserving PBKDF2 hashes, session expiry, revocation, and CSRF behavior.
+- [x] Added a server-side Next.js `/api/*` rewrite using `API_BASE_URL`; no
+  database credentials or backend URL are exposed through `NEXT_PUBLIC_*`.
+- [x] Added Vercel, Render, and Supabase setup documentation.
+
+Live Supabase connectivity was not tested because no database credentials were
+provided. The local SQLite suite and PostgreSQL driver installation were
+verified; production deployment remains intentionally unperformed.

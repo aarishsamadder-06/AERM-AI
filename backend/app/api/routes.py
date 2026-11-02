@@ -1,6 +1,5 @@
 import os
 import secrets
-import sqlite3
 from io import BytesIO
 
 from fastapi import APIRouter, Cookie, File, Form, Header, HTTPException, Query, Response, UploadFile
@@ -15,6 +14,7 @@ from ..schemas import (
 from ..auth_schemas import LoginRequest, RegisterRequest, UserResponse
 from ..services.auth import (
     SESSION_COOKIE,
+    UserAlreadyExistsError,
     authenticate_user,
     create_session,
     create_user,
@@ -85,10 +85,8 @@ def register(
     _require_csrf(aerm_csrf, x_csrf_token)
     try:
         user = create_user(request.name, normalize_email(str(request.email)), request.password)
-    except sqlite3.IntegrityError as exc:
-        if "UNIQUE constraint failed" in str(exc):
-            raise HTTPException(status_code=409, detail="An account with that email already exists.") from exc
-        raise
+    except UserAlreadyExistsError as exc:
+        raise HTTPException(status_code=409, detail="An account with that email already exists.") from exc
     token, expires_at = create_session(user["id"])
     _set_session_cookie(response, token, expires_at)
     _set_csrf_cookie(response, secrets.token_urlsafe(32))

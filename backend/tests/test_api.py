@@ -6,7 +6,7 @@ from PIL import Image
 
 from app.main import app
 from app.config import allowed_origins, cookie_samesite, cookie_secure, session_secret
-from app.services.auth import create_session, get_user_for_session, revoke_session
+from app.services.auth import create_session, database_backend, get_user_for_session, revoke_session
 from app.services.quality_gate import _load_model
 
 client = TestClient(app)
@@ -29,6 +29,14 @@ def test_health():
     assert health["service"] == "aerm-ai-api"
     assert health["demo_mode"] is True
     assert health["model"] == "phase1-deterministic-skin-simulator"
+
+
+def test_sqlite_is_default_when_database_url_is_unset(monkeypatch, tmp_path):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("AERM_DATABASE_PATH", str(tmp_path / "auth.sqlite3"))
+    assert database_backend() == "sqlite"
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example.invalid/aerm")
+    assert database_backend() == "postgresql"
 
 
 def test_auth_register_login_me_and_logout(monkeypatch, tmp_path):

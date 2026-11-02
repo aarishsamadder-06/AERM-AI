@@ -37,7 +37,10 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. The frontend defaults to `http://localhost:8000`; set `NEXT_PUBLIC_API_URL` to override it.
+Open http://localhost:3000. Browser requests use the same-origin `/api/*`
+paths and Next.js rewrites them server-side to `API_BASE_URL`; the backend URL
+and database credentials are never exposed through `NEXT_PUBLIC_*` variables.
+For local development, `API_BASE_URL=http://localhost:8000`.
 
 Run the backend before using Analyze or Products. If PowerShell execution policy blocks activation, run `backend\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000` from `backend` instead.
 
@@ -118,6 +121,61 @@ input. Keep it outside Git, restrict filesystem write access, and set
 `AERM_QUALITY_MODEL_SHA256` in production so the API verifies the exact artifact
 before loading it. The checkpoint remains image-gradability-only and is not a
 cosmetic or medical diagnosis model.
+
+## Free deployment: Vercel + Render + Supabase
+
+The application keeps authentication in FastAPI and uses Supabase only as a
+managed PostgreSQL database. Do not enable Supabase Auth for this project.
+
+### Supabase
+
+1. Create a Supabase project and copy its pooled or direct PostgreSQL connection
+   string into Render as `DATABASE_URL`.
+2. Keep the connection string server-side only. Do not add it to Vercel or any
+   `NEXT_PUBLIC_*` variable.
+3. On startup, FastAPI creates the `users` and `sessions` tables and the session
+   index if they do not already exist. Existing password hashes and session
+   expiry/revocation fields are preserved when moving the schema to PostgreSQL;
+   export/import existing SQLite rows separately if existing local accounts must
+   be retained.
+
+### Render backend
+
+Create a Python web service with root directory `backend` and:
+
+```text
+Build command: pip install -r requirements.txt
+Start command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Set these Render environment variables:
+
+```text
+AERM_ENV=production
+DATABASE_URL=<Supabase PostgreSQL connection string>
+AERM_SESSION_SECRET=<random secret, at least 32 characters>
+AERM_COOKIE_SECURE=true
+AERM_COOKIE_SAMESITE=lax
+AERM_ALLOWED_ORIGINS=https://<your-vercel-domain>
+AERM_QUALITY_MODEL_PATH=<optional trusted external checkpoint path>
+AERM_QUALITY_MODEL_SHA256=<required when the checkpoint is configured in production>
+```
+
+The free Render service may sleep when idle. Use the Render HTTPS URL as the
+backend origin and verify `/api/health` after the first cold start.
+
+### Vercel frontend
+
+Import the repository into Vercel with root directory `frontend`. Set:
+
+```text
+API_BASE_URL=https://<your-render-service>.onrender.com
+```
+
+Do not set `NEXT_PUBLIC_API_URL` or expose `DATABASE_URL`,
+`AERM_SESSION_SECRET`, or other backend secrets in Vercel client variables.
+The Next.js rewrite proxies `/api/*` to Render, so cookies remain first-party
+to the Vercel origin and the CSRF double-submit flow continues to work.
 
 ## Data provenance and known issues
 

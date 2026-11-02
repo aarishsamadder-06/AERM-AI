@@ -19,6 +19,12 @@ FastAPI
   └─ app/services/auth.py — SQLite users and server-side session cookies
 ```
 
+Authentication storage uses PostgreSQL through psycopg v3 when `DATABASE_URL`
+is configured, and SQLite otherwise. The schema and API are unchanged across
+both backends. The frontend calls same-origin `/api/*` paths; Next.js rewrites
+them server-side to `API_BASE_URL`, keeping backend and database configuration
+out of browser JavaScript.
+
 ## API contract
 
 - `GET /api/health` returns service status, `demo_mode`, the model identifier `phase1-deterministic-skin-simulator`, and `image_quality_gate_configured`.
